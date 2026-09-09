@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ボール分裂シミュレーション</title>
+    <title>ボール分裂シミュレータ</title>
     <style>
         body {
             margin: 0;
@@ -117,14 +117,15 @@
 <body>
 
     <div class="ui-panel" id="uiPanel">
-        <div>モード: <span id="modeText" style="color: #00ffcc; font-weight: bold;">分裂中 (SPLITTING)</span></div>
+        <div>モード: <span id="modeText" style="color: #00ffcc; font-weight: bold;">分裂中</span> <button class="ui-btn" id="toggleModeBtn">切替</button></div>
         <div>ボール数: <span id="ballCount">2</span></div>
-        <div>上限数: <span id="maxLimitVal">0</span> <button class="ui-btn" id="openKeypadBtn">変更</button></div>
+        <div>上限数: <span id="maxLimitVal">0</span> <button class="ui-btn" id="openMaxKeypadBtn">変更</button></div>
+        <div>下限数: <span id="minLimitVal">2</span> <button class="ui-btn" id="openMinKeypadBtn">変更</button></div>
         <div>表示: <button class="ui-btn" id="fullscreenBtn">全画面にする</button></div>
     </div>
 
     <div class="keypad-modal" id="keypadModal">
-        <div style="margin-bottom: 8px; font-size: 13px; color: #aaa;">上限数を入力</div>
+        <div style="margin-bottom: 8px; font-size: 13px; color: #aaa;" id="keypadTitle">数値を入力</div>
         <div class="keypad-display" id="keypadDisplay">0</div>
         <div class="keypad-grid">
             <button class="keypad-btn" data-val="1">1</button>
@@ -149,25 +150,51 @@
         const canvas = document.getElementById('simCanvas');
         const ctx = canvas.getContext('2d');
         const modeText = document.getElementById('modeText');
+        const toggleModeBtn = document.getElementById('toggleModeBtn');
         const ballCountSpan = document.getElementById('ballCount');
         const uiPanel = document.getElementById('uiPanel');
         const maxLimitValSpan = document.getElementById('maxLimitVal');
+        const minLimitValSpan = document.getElementById('minLimitVal');
         const fullscreenBtn = document.getElementById('fullscreenBtn');
         
         const keypadModal = document.getElementById('keypadModal');
+        const keypadTitle = document.getElementById('keypadTitle');
         const keypadDisplay = document.getElementById('keypadDisplay');
-        const openKeypadBtn = document.getElementById('openKeypadBtn');
+        const openMaxKeypadBtn = document.getElementById('openMaxKeypadBtn');
+        const openMinKeypadBtn = document.getElementById('openMinKeypadBtn');
         const clearBtn = document.getElementById('clearBtn');
         const backBtn = document.getElementById('backBtn');
         const okBtn = document.getElementById('okBtn');
 
         const MIN_RADIUS = 5;
         let MAX_LIMIT = 1000;
+        let MIN_LIMIT = 2;
         const BALL_SPEED = 3.5;
         let mode = 'SPLITTING';
         let uiVisible = true;
         let isKeypadOpen = false;
         let inputBuffer = '';
+        let activeTarget = 'MAX';
+
+        function updateModeDisplay() {
+            if (mode === 'SPLITTING') {
+                modeText.textContent = '分裂中';
+                modeText.style.color = '#00ffcc';
+            } else {
+                modeText.textContent = '吸収合体中';
+                modeText.style.color = '#ff3366';
+            }
+        }
+
+        toggleModeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (mode === 'SPLITTING') {
+                mode = 'ABSORBING';
+            } else {
+                mode = 'SPLITTING';
+            }
+            updateModeDisplay();
+        });
 
         function calculateDefaultLimit() {
             const screenArea = window.innerWidth * window.innerHeight;
@@ -191,6 +218,7 @@
 
         MAX_LIMIT = calculateDefaultLimit();
         maxLimitValSpan.textContent = MAX_LIMIT;
+        minLimitValSpan.textContent = MIN_LIMIT;
 
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
@@ -215,7 +243,6 @@
             uiPanel.style.display = uiVisible ? 'block' : 'none';
         });
 
-        // 全画面ボタンの切り替え処理
         fullscreenBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             if (!document.fullscreenElement) {
@@ -237,15 +264,28 @@
             }
         });
 
-        openKeypadBtn.addEventListener('click', (e) => {
+        openMaxKeypadBtn.addEventListener('click', (e) => {
             e.stopPropagation();
+            activeTarget = 'MAX';
+            keypadTitle.textContent = '上限数を入力';
+            openKeypad(MAX_LIMIT);
+        });
+
+        openMinKeypadBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            activeTarget = 'MIN';
+            keypadTitle.textContent = '下限数を入力';
+            openKeypad(MIN_LIMIT);
+        });
+
+        function openKeypad(currentVal) {
             isKeypadOpen = true;
             document.body.classList.remove('hide-cursor');
             clearTimeout(cursorTimer);
-            inputBuffer = MAX_LIMIT.toString();
+            inputBuffer = currentVal.toString();
             keypadDisplay.textContent = inputBuffer;
             keypadModal.style.display = 'block';
-        });
+        }
 
         document.querySelectorAll('.keypad-btn[data-val]').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -275,17 +315,33 @@
 
         okBtn.addEventListener('click', () => {
             let num = parseInt(inputBuffer, 10);
-            if (isNaN(num) || num < 2) num = 2;
-            MAX_LIMIT = num;
-            maxLimitValSpan.textContent = MAX_LIMIT;
+            if (isNaN(num)) num = 2;
+
+            if (activeTarget === 'MAX') {
+                if (num < 2) num = 2;
+                MAX_LIMIT = num;
+                maxLimitValSpan.textContent = MAX_LIMIT;
+                if (MIN_LIMIT >= MAX_LIMIT) {
+                    MIN_LIMIT = Math.max(1, MAX_LIMIT - 1);
+                    minLimitValSpan.textContent = MIN_LIMIT;
+                }
+            } else {
+                if (num < 1) num = 1;
+                if (num >= MAX_LIMIT) num = MAX_LIMIT - 1;
+                MIN_LIMIT = num;
+                minLimitValSpan.textContent = MIN_LIMIT;
+            }
+
             keypadModal.style.display = 'none';
             isKeypadOpen = false;
             resetCursorTimer();
 
             if (mode === 'SPLITTING' && balls.length >= MAX_LIMIT) {
                 mode = 'ABSORBING';
-                modeText.textContent = '吸収合体中 (ABSORBING)';
-                modeText.style.color = '#ff3366';
+                updateModeDisplay();
+            } else if (mode === 'ABSORBING' && balls.length <= MIN_LIMIT) {
+                mode = 'SPLITTING';
+                updateModeDisplay();
             }
         });
 
@@ -457,12 +513,10 @@
 
             if (mode === 'SPLITTING' && balls.length >= MAX_LIMIT) {
                 mode = 'ABSORBING';
-                modeText.textContent = '吸収中';
-                modeText.style.color = '#ff3366';
-            } else if (mode === 'ABSORBING' && balls.length <= 2) {
+                updateModeDisplay();
+            } else if (mode === 'ABSORBING' && balls.length <= MIN_LIMIT) {
                 mode = 'SPLITTING';
-                modeText.textContent = '分裂中';
-                modeText.style.color = '#00ffcc';
+                updateModeDisplay();
             }
 
             ballCountSpan.textContent = balls.length;
