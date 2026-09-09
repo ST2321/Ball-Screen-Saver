@@ -17,6 +17,7 @@
             align-items: center;
             font-family: sans-serif;
             color: #fff;
+            user-select: none;
         }
         canvas {
             display: block;
@@ -26,18 +27,88 @@
             position: absolute;
             top: 20px;
             left: 20px;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.75);
             padding: 12px 18px;
             border-radius: 8px;
             border: 1px solid #333;
             font-size: 14px;
-            pointer-events: none;
             letter-spacing: 0.05em;
             z-index: 10;
             transition: opacity 0.3s ease;
         }
         .ui-panel div {
-            margin-bottom: 4px;
+            margin-bottom: 6px;
+        }
+        .limit-btn {
+            background: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 2px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 6px;
+        }
+        .limit-btn:hover {
+            background: #444;
+        }
+
+        /* テンキーモーダル */
+        .keypad-modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(20, 20, 30, 0.95);
+            border: 1px solid #444;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            z-index: 100;
+            display: none;
+            text-align: center;
+        }
+        .keypad-display {
+            background: #111;
+            border: 1px solid #555;
+            color: #00ffcc;
+            font-size: 20px;
+            padding: 8px;
+            margin-bottom: 15px;
+            border-radius: 6px;
+            letter-spacing: 2px;
+        }
+        .keypad-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 60px);
+            gap: 8px;
+            justify-content: center;
+        }
+        .keypad-btn {
+            background: #2a2a3a;
+            color: #fff;
+            border: 1px solid #444;
+            padding: 12px;
+            font-size: 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+        .keypad-btn:hover {
+            background: #3a3a4a;
+        }
+        .keypad-btn.action {
+            background: #332222;
+        }
+        .keypad-btn.action:hover {
+            background: #442a2a;
+        }
+        .keypad-btn.ok {
+            background: #1b4d3e;
+            grid-column: span 3;
+        }
+        .keypad-btn.ok:hover {
+            background: #236350;
         }
     </style>
 </head>
@@ -45,7 +116,29 @@
 
     <div class="ui-panel" id="uiPanel">
         <div>モード: <span id="modeText" style="color: #00ffcc; font-weight: bold;">分裂中 (SPLITTING)</span></div>
-        <div>ボール数: <span id="ballCount">2</span> / 上限 9999</div>
+        <div>ボール数: <span id="ballCount">2</span></div>
+        <div>上限数: <span id="maxLimitVal">9999</span> <button class="limit-btn" id="openKeypadBtn">変更</button></div>
+    </div>
+
+    <!-- テンキーモーダル -->
+    <div class="keypad-modal" id="keypadModal">
+        <div style="margin-bottom: 8px; font-size: 13px; color: #aaa;">上限数を入力 (1〜9999)</div>
+        <div class="keypad-display" id="keypadDisplay">9999</div>
+        <div class="keypad-grid">
+            <button class="keypad-btn" data-val="1">1</button>
+            <button class="keypad-btn" data-val="2">2</button>
+            <button class="keypad-btn" data-val="3">3</button>
+            <button class="keypad-btn" data-val="4">4</button>
+            <button class="keypad-btn" data-val="5">5</button>
+            <button class="keypad-btn" data-val="6">6</button>
+            <button class="keypad-btn" data-val="7">7</button>
+            <button class="keypad-btn" data-val="8">8</button>
+            <button class="keypad-btn" data-val="9">9</button>
+            <button class="keypad-btn action" id="clearBtn">C</button>
+            <button class="keypad-btn" data-val="0">0</button>
+            <button class="keypad-btn action" id="backBtn">←</button>
+            <button class="keypad-btn ok" id="okBtn">確定</button>
+        </div>
     </div>
 
     <canvas id="simCanvas"></canvas>
@@ -56,11 +149,21 @@
         const modeText = document.getElementById('modeText');
         const ballCountSpan = document.getElementById('ballCount');
         const uiPanel = document.getElementById('uiPanel');
+        const maxLimitValSpan = document.getElementById('maxLimitVal');
+        
+        const keypadModal = document.getElementById('keypadModal');
+        const keypadDisplay = document.getElementById('keypadDisplay');
+        const openKeypadBtn = document.getElementById('openKeypadBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const backBtn = document.getElementById('backBtn');
+        const okBtn = document.getElementById('okBtn');
 
-        const MAX_LIMIT = 9999;
+        let MAX_LIMIT = 9999;
         const BALL_SPEED = 3.5;
         let mode = 'SPLITTING';
         let uiVisible = true;
+        let isKeypadOpen = false;
+        let inputBuffer = '9999';
 
         function resizeCanvas() {
             canvas.width = window.innerWidth;
@@ -69,17 +172,70 @@
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        // 画面内ダブルクリックでUIの表示/非表示を切り替え
-        window.addEventListener('dblclick', () => {
+        // 画面内ダブルクリックでUIの表示/非表示を切り替え（テンキーが開いていない時のみ）
+        window.addEventListener('dblclick', (e) => {
+            if (isKeypadOpen) return;
             uiVisible = !uiVisible;
             uiPanel.style.display = uiVisible ? 'block' : 'none';
         });
 
-        // 全画面モードになったら自動で非表示にする
         document.addEventListener('fullscreenchange', () => {
             if (document.fullscreenElement) {
                 uiPanel.style.display = 'none';
                 uiVisible = false;
+            }
+        });
+
+        // テンキーの開閉制御
+        openKeypadBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            isKeypadOpen = true;
+            inputBuffer = MAX_LIMIT.toString();
+            keypadDisplay.textContent = inputBuffer;
+            keypadModal.style.display = 'block';
+        });
+
+        // テンキーの数字ボタン
+        document.querySelectorAll('.keypad-btn[data-val]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                let val = btn.getAttribute('data-val');
+                if (inputBuffer === '0' || inputBuffer.length >= 4) {
+                    inputBuffer = val;
+                } else {
+                    inputBuffer += val;
+                }
+                keypadDisplay.textContent = inputBuffer;
+            });
+        });
+
+        clearBtn.addEventListener('click', () => {
+            inputBuffer = '0';
+            keypadDisplay.textContent = inputBuffer;
+        });
+
+        backBtn.addEventListener('click', () => {
+            if (inputBuffer.length > 1) {
+                inputBuffer = inputBuffer.slice(0, -1);
+            } else {
+                inputBuffer = '0';
+            }
+            keypadDisplay.textContent = inputBuffer;
+        });
+
+        okBtn.addEventListener('click', () => {
+            let num = parseInt(inputBuffer, 10);
+            if (isNaN(num) || num < 2) num = 2;
+            if (num > 9999) num = 9999;
+            MAX_LIMIT = num;
+            maxLimitValSpan.textContent = MAX_LIMIT;
+            keypadModal.style.display = 'none';
+            isKeypadOpen = false;
+
+            // もし現在ボール数が新上限を超えていたら吸収モードに切り替え調整
+            if (mode === 'SPLITTING' && balls.length >= MAX_LIMIT) {
+                mode = 'ABSORBING';
+                modeText.textContent = '吸収合体中 (ABSORBING)';
+                modeText.style.color = '#ff3366';
             }
         });
 
@@ -251,11 +407,11 @@
 
             if (mode === 'SPLITTING' && balls.length >= MAX_LIMIT) {
                 mode = 'ABSORBING';
-                modeText.textContent = '吸収中';
+                modeText.textContent = '吸収合体中 (ABSORBING)';
                 modeText.style.color = '#ff3366';
             } else if (mode === 'ABSORBING' && balls.length <= 2) {
                 mode = 'SPLITTING';
-                modeText.textContent = '分裂中';
+                modeText.textContent = '分裂中 (SPLITTING)';
                 modeText.style.color = '#00ffcc';
             }
 
@@ -263,6 +419,7 @@
         }
 
         canvas.addEventListener('click', (e) => {
+            if (isKeypadOpen) return;
             if (balls.length < MAX_LIMIT) {
                 balls.push(new Ball(e.clientX, e.clientY, Math.random() - 0.5, Math.random() - 0.5, 18, getRandomColor(), 10));
             }
