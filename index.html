@@ -19,6 +19,10 @@
             color: #fff;
             user-select: none;
         }
+        /* カーソル非表示用のクラス */
+        body.hide-cursor {
+            cursor: none;
+        }
         canvas {
             display: block;
             background: #12121c;
@@ -165,6 +169,22 @@
         let isKeypadOpen = false;
         let inputBuffer = '9999';
 
+        // マウスカーソル自動非表示タイマーの処理
+        let cursorTimer = null;
+        function resetCursorTimer() {
+            document.body.classList.remove('hide-cursor');
+            clearTimeout(cursorTimer);
+            // テンキーが開いていない時のみ、3秒後に非表示にする
+            if (!isKeypadOpen) {
+                cursorTimer = setTimeout(() => {
+                    document.body.classList.add('hide-cursor');
+                }, 3000);
+            }
+        }
+
+        window.addEventListener('mousemove', resetCursorTimer);
+        window.addEventListener('mousedown', resetCursorTimer);
+
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
@@ -190,6 +210,8 @@
         openKeypadBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             isKeypadOpen = true;
+            document.body.classList.remove('hide-cursor'); // テンキーを開いたらカーソルを必ず表示
+            clearTimeout(cursorTimer);
             inputBuffer = MAX_LIMIT.toString();
             keypadDisplay.textContent = inputBuffer;
             keypadModal.style.display = 'block';
@@ -230,8 +252,8 @@
             maxLimitValSpan.textContent = MAX_LIMIT;
             keypadModal.style.display = 'none';
             isKeypadOpen = false;
+            resetCursorTimer();
 
-            // もし現在ボール数が新上限を超えていたら吸収モードに切り替え調整
             if (mode === 'SPLITTING' && balls.length >= MAX_LIMIT) {
                 mode = 'ABSORBING';
                 modeText.textContent = '吸収合体中 (ABSORBING)';
