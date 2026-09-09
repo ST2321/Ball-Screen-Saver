@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ボール分裂・吸収無限ループシミュレーション</title>
+    <title>ボール分裂シミュレーション</title>
     <style>
         body {
             margin: 0;
@@ -457,11 +457,11 @@
 
             if (mode === 'SPLITTING' && balls.length >= MAX_LIMIT) {
                 mode = 'ABSORBING';
-                modeText.textContent = '吸収合体中 (ABSORBING)';
+                modeText.textContent = '吸収中';
                 modeText.style.color = '#ff3366';
             } else if (mode === 'ABSORBING' && balls.length <= 2) {
                 mode = 'SPLITTING';
-                modeText.textContent = '分裂中 (SPLITTING)';
+                modeText.textContent = '分裂中';
                 modeText.style.color = '#00ffcc';
             }
 
