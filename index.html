@@ -55,6 +55,17 @@
         .ui-btn:hover {
             background: #444;
         }
+        .ui-panel label {
+            font-size: 12px;
+            margin-left: 6px;
+            cursor: pointer;
+            vertical-align: middle;
+        }
+        .ui-panel input[type="checkbox"] {
+            cursor: pointer;
+            vertical-align: middle;
+            margin-left: 4px;
+        }
 
         .keypad-modal {
             position: absolute;
@@ -121,6 +132,7 @@
         <div>ボール数: <span id="ballCount">2</span></div>
         <div>上限数: <span id="maxLimitVal">0</span> <button class="ui-btn" id="openMaxKeypadBtn">変更</button></div>
         <div>下限数: <span id="minLimitVal">2</span> <button class="ui-btn" id="openMinKeypadBtn">変更</button></div>
+        <div>スピード: <span id="speedVal">3.5</span> <button class="ui-btn" id="openSpeedKeypadBtn">変更</button><label><input type="checkbox" id="randomSpeedCheck">ランダム</label></div>
         <div>表示: <button class="ui-btn" id="fullscreenBtn">全画面にする</button></div>
     </div>
 
@@ -155,6 +167,8 @@
         const uiPanel = document.getElementById('uiPanel');
         const maxLimitValSpan = document.getElementById('maxLimitVal');
         const minLimitValSpan = document.getElementById('minLimitVal');
+        const speedValSpan = document.getElementById('speedVal');
+        const randomSpeedCheck = document.getElementById('randomSpeedCheck');
         const fullscreenBtn = document.getElementById('fullscreenBtn');
         
         const keypadModal = document.getElementById('keypadModal');
@@ -162,6 +176,7 @@
         const keypadDisplay = document.getElementById('keypadDisplay');
         const openMaxKeypadBtn = document.getElementById('openMaxKeypadBtn');
         const openMinKeypadBtn = document.getElementById('openMinKeypadBtn');
+        const openSpeedKeypadBtn = document.getElementById('openSpeedKeypadBtn');
         const clearBtn = document.getElementById('clearBtn');
         const backBtn = document.getElementById('backBtn');
         const okBtn = document.getElementById('okBtn');
@@ -169,7 +184,8 @@
         const MIN_RADIUS = 5;
         let MAX_LIMIT = 1000;
         let MIN_LIMIT = 2;
-        const BALL_SPEED = 3.5;
+        let BALL_SPEED = 3.5;
+        let isRandomSpeed = false;
         let mode = 'SPLITTING';
         let uiVisible = true;
         let isKeypadOpen = false;
@@ -188,12 +204,16 @@
 
         toggleModeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (mode === 'SPLITTING') {
-                mode = 'ABSORBING';
-            } else {
-                mode = 'SPLITTING';
-            }
+            mode = (mode === 'SPLITTING') ? 'ABSORBING' : 'SPLITTING';
             updateModeDisplay();
+        });
+
+        randomSpeedCheck.addEventListener('change', (e) => {
+            e.stopPropagation();
+            isRandomSpeed = randomSpeedCheck.checked;
+            for (let b of balls) {
+                b.assignSpeed();
+            }
         });
 
         function calculateDefaultLimit() {
@@ -219,6 +239,7 @@
         MAX_LIMIT = calculateDefaultLimit();
         maxLimitValSpan.textContent = MAX_LIMIT;
         minLimitValSpan.textContent = MIN_LIMIT;
+        speedValSpan.textContent = BALL_SPEED;
 
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
@@ -278,6 +299,13 @@
             openKeypad(MIN_LIMIT);
         });
 
+        openSpeedKeypadBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            activeTarget = 'SPEED';
+            keypadTitle.textContent = 'スピードを入力 (1-20)';
+            openKeypad(BALL_SPEED);
+        });
+
         function openKeypad(currentVal) {
             isKeypadOpen = true;
             document.body.classList.remove('hide-cursor');
@@ -315,7 +343,7 @@
 
         okBtn.addEventListener('click', () => {
             let num = parseInt(inputBuffer, 10);
-            if (isNaN(num)) num = 2;
+            if (isNaN(num)) num = 1;
 
             if (activeTarget === 'MAX') {
                 if (num < 2) num = 2;
@@ -325,11 +353,19 @@
                     MIN_LIMIT = Math.max(1, MAX_LIMIT - 1);
                     minLimitValSpan.textContent = MIN_LIMIT;
                 }
-            } else {
+            } else if (activeTarget === 'MIN') {
                 if (num < 1) num = 1;
                 if (num >= MAX_LIMIT) num = MAX_LIMIT - 1;
                 MIN_LIMIT = num;
                 minLimitValSpan.textContent = MIN_LIMIT;
+            } else if (activeTarget === 'SPEED') {
+                if (num < 1) num = 1;
+                if (num > 20) num = 20;
+                BALL_SPEED = num;
+                speedValSpan.textContent = BALL_SPEED;
+                for (let b of balls) {
+                    b.assignSpeed();
+                }
             }
 
             keypadModal.style.display = 'none';
@@ -352,18 +388,23 @@
                 this.radius = radius;
                 this.color = color;
                 this.cooldown = cooldown;
-                this.setSpeed(vx, vy);
+                this.vx = vx;
+                this.vy = vy;
+                this.assignSpeed();
             }
 
-            setSpeed(vx, vy) {
-                let currentSpeed = Math.hypot(vx, vy);
+            assignSpeed() {
+                let currentSpeed = Math.hypot(this.vx, this.vy);
                 if (currentSpeed === 0) {
-                    vx = BALL_SPEED;
-                    vy = 0;
-                    currentSpeed = BALL_SPEED;
+                    let angle = Math.random() * Math.PI * 2;
+                    this.vx = Math.cos(angle);
+                    this.vy = Math.sin(angle);
+                    currentSpeed = 1;
                 }
-                this.vx = (vx / currentSpeed) * BALL_SPEED;
-                this.vy = (vy / currentSpeed) * BALL_SPEED;
+                
+                let targetSpeed = isRandomSpeed ? (Math.random() * 6.2 + 0.8) : BALL_SPEED;
+                this.vx = (this.vx / currentSpeed) * targetSpeed;
+                this.vy = (this.vy / currentSpeed) * targetSpeed;
             }
 
             update() {
@@ -385,8 +426,6 @@
                     this.y = canvas.height - this.radius;
                     this.vy *= -1;
                 }
-
-                this.setSpeed(this.vx, this.vy);
 
                 if (this.cooldown > 0) {
                     this.cooldown--;
@@ -453,26 +492,64 @@
                             let distance = Math.hypot(distX, distY);
 
                             if (distance < b1.radius + b2.radius) {
-                                let angle = Math.atan2(distY, distX);
-                                let speed1 = Math.hypot(b1.vx, b1.vy);
-                                let speed2 = Math.hypot(b2.vx, b2.vy);
-                                let dir1 = Math.atan2(b1.vy, b1.vx);
-                                let dir2 = Math.atan2(b2.vy, b2.vx);
+                                let nx = distX / distance;
+                                let ny = distY / distance;
 
-                                let newVx1 = speed2 * Math.cos(dir2 - angle) * Math.cos(angle) + speed1 * Math.sin(dir1 - angle) * Math.cos(angle + Math.PI / 2);
-                                let newVy1 = speed2 * Math.cos(dir2 - angle) * Math.sin(angle) + speed1 * Math.sin(dir1 - angle) * Math.sin(angle + Math.PI / 2);
+                                let rvx = b2.vx - b1.vx;
+                                let rvy = b2.vy - b1.vy;
+                                let velAlongNormal = rvx * nx + rvy * ny;
 
-                                let newVx2 = speed1 * Math.cos(dir1 - angle) * Math.cos(angle) + speed2 * Math.sin(dir2 - angle) * Math.cos(angle + Math.PI / 2);
-                                let newVy2 = speed1 * Math.cos(dir1 - angle) * Math.sin(angle) + speed2 * Math.sin(dir2 - angle) * Math.sin(angle + Math.PI / 2);
+                                if (velAlongNormal < 0) {
+                                    if (isRandomSpeed) {
+                                        // 慣性の法則（質量 = 半径の二乗）を考慮した弾性衝突
+                                        let m1 = b1.radius * b1.radius;
+                                        let m2 = b2.radius * b2.radius;
+                                        let e = 1.0;
+                                        let impulseScalar = -(1 + e) * velAlongNormal / (1/m1 + 1/m2);
 
-                                b1.setSpeed(newVx1, newVy1);
-                                b2.setSpeed(newVx2, newVy2);
+                                        b1.vx -= (impulseScalar / m1) * nx;
+                                        b1.vy -= (impulseScalar / m1) * ny;
+                                        b2.vx += (impulseScalar / m2) * nx;
+                                        b2.vy += (impulseScalar / m2) * ny;
+                                    } else {
+                                        // 固定スピードモードの衝突
+                                        let speed1 = Math.hypot(b1.vx, b1.vy);
+                                        let speed2 = Math.hypot(b2.vx, b2.vy);
+                                        let dir1 = Math.atan2(b1.vy, b1.vx);
+                                        let dir2 = Math.atan2(b2.vy, b2.vx);
+                                        let angle = Math.atan2(distY, distX);
+
+                                        let newVx1 = speed2 * Math.cos(dir2 - angle) * Math.cos(angle) + speed1 * Math.sin(dir1 - angle) * Math.cos(angle + Math.PI / 2);
+                                        let newVy1 = speed2 * Math.cos(dir2 - angle) * Math.sin(angle) + speed1 * Math.sin(dir1 - angle) * Math.sin(angle + Math.PI / 2);
+                                        let newVx2 = speed1 * Math.cos(dir1 - angle) * Math.cos(angle) + speed2 * Math.sin(dir2 - angle) * Math.cos(angle + Math.PI / 2);
+                                        let newVy2 = speed1 * Math.cos(dir1 - angle) * Math.sin(angle) + speed2 * Math.sin(dir2 - angle) * Math.sin(angle + Math.PI / 2);
+
+                                        b1.vx = newVx1;
+                                        b1.vy = newVy1;
+                                        b2.vx = newVx2;
+                                        b2.vy = newVy2;
+
+                                        let curSpeed1 = Math.hypot(b1.vx, b1.vy);
+                                        if (curSpeed1 > 0) {
+                                            b1.vx = (b1.vx / curSpeed1) * BALL_SPEED;
+                                            b1.vy = (b1.vy / curSpeed1) * BALL_SPEED;
+                                        }
+                                        let curSpeed2 = Math.hypot(b2.vx, b2.vy);
+                                        if (curSpeed2 > 0) {
+                                            b2.vx = (b2.vx / curSpeed2) * BALL_SPEED;
+                                            b2.vy = (b2.vy / curSpeed2) * BALL_SPEED;
+                                        }
+                                    }
+                                }
 
                                 let overlap = (b1.radius + b2.radius) - distance;
-                                b1.x -= overlap * Math.cos(angle) * 0.5;
-                                b1.y -= overlap * Math.sin(angle) * 0.5;
-                                b2.x += overlap * Math.cos(angle) * 0.5;
-                                b2.y += overlap * Math.sin(angle) * 0.5;
+                                let m1 = b1.radius * b1.radius;
+                                let m2 = b2.radius * b2.radius;
+                                let totalM = m1 + m2;
+                                b1.x -= nx * overlap * (m2 / totalM);
+                                b1.y -= ny * overlap * (m2 / totalM);
+                                b2.x += nx * overlap * (m1 / totalM);
+                                b2.y += ny * overlap * (m1 / totalM);
 
                                 if (mode === 'SPLITTING') {
                                     if (b1.cooldown === 0 && b2.cooldown === 0 && balls.length + ballsToAdd.length < MAX_LIMIT) {
@@ -482,10 +559,12 @@
                                         let r1 = Math.max(b1.radius * 0.75, MIN_RADIUS);
                                         let r2 = Math.max(b2.radius * 0.75, MIN_RADIUS);
 
-                                        ballsToAdd.push(new Ball(b1.x - Math.cos(angle)*r1, b1.y - Math.sin(angle)*r1, b1.vx, b1.vy, r1, getRandomColor(), 20));
-                                        ballsToAdd.push(new Ball(b1.x + Math.cos(angle)*r1, b1.y + Math.sin(angle)*r1, -b1.vx, -b1.vy, r1, getRandomColor(), 20));
-                                        ballsToAdd.push(new Ball(b2.x - Math.cos(angle)*r2, b2.y - Math.sin(angle)*r2, b2.vx, b2.vy, r2, getRandomColor(), 20));
-                                        ballsToAdd.push(new Ball(b2.x + Math.cos(angle)*r2, b2.y + Math.sin(angle)*r2, -b2.vx, -b2.vy, r2, getRandomColor(), 20));
+                                        let newB1 = new Ball(b1.x - nx*r1, b1.y - ny*r1, b1.vx, b1.vy, r1, getRandomColor(), 20);
+                                        let newB2 = new Ball(b1.x + nx*r1, b1.y + ny*r1, -b1.vx, -b1.vy, r1, getRandomColor(), 20);
+                                        let newB3 = new Ball(b2.x - nx*r2, b2.y - ny*r2, b2.vx, b2.vy, r2, getRandomColor(), 20);
+                                        let newB4 = new Ball(b2.x + nx*r2, b2.y + ny*r2, -b2.vx, -b2.vy, r2, getRandomColor(), 20);
+
+                                        ballsToAdd.push(newB1, newB2, newB3, newB4);
                                     }
                                 } else if (mode === 'ABSORBING') {
                                     ballsToRemove.add(b1);
@@ -494,8 +573,8 @@
                                     let mergedRadius = Math.min(Math.hypot(b1.radius, b2.radius) * 0.9, 50);
                                     let mergedX = (b1.x + b2.x) / 2;
                                     let mergedY = (b1.y + b2.y) / 2;
-                                    let mergedVx = (b1.vx + b2.vx) / 2;
-                                    let mergedVy = (b1.vy + b2.vy) / 2;
+                                    let mergedVx = (b1.vx * m1 + b2.vx * m2) / totalM;
+                                    let mergedVy = (b1.vy * m1 + b2.vy * m2) / totalM;
 
                                     ballsToAdd.push(new Ball(mergedX, mergedY, mergedVx, mergedVy, mergedRadius, getRandomColor(), 10));
                                 }
