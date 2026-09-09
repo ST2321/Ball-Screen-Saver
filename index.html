@@ -66,6 +66,12 @@
             vertical-align: middle;
             margin-left: 4px;
         }
+        .ui-help {
+            font-size: 11px;
+            color: #888;
+            margin-top: 4px;
+            margin-bottom: 0 !important;
+        }
 
         .keypad-modal {
             position: absolute;
@@ -130,11 +136,12 @@
     <div class="ui-panel" id="uiPanel">
         <div>モード: <span id="modeText" style="color: #00ffcc; font-weight: bold;">分裂中</span> <button class="ui-btn" id="toggleModeBtn">切替</button></div>
         <div>ボール数: <span id="ballCount">2</span></div>
-        <div>上限数: <span id="maxLimitVal">0</span> <button class="ui-btn" id="openMaxKeypadBtn">変更</button></div>
-        <div>下限数: <span id="minLimitVal">2</span> <button class="ui-btn" id="openMinKeypadBtn">変更</button></div>
-        <div>スピード: <span id="speedVal">3.5</span> <button class="ui-btn" id="openSpeedKeypadBtn">変更</button><label><input type="checkbox" id="randomSpeedCheck">ランダム</label></div>
-        <div>軌跡: <span id="trailStatus" style="color: #00ffcc;">ON</span> <button class="ui-btn" id="toggleTrailBtn">切替</button></div>
+        <div>上限数: <span id="maxLimitVal">1000</span> <button class="ui-btn" id="openMaxKeypadBtn">変更</button></div>
+        <div>下限数: <span id="minLimitVal">10</span> <button class="ui-btn" id="openMinKeypadBtn">変更</button></div>
+        <div>スピード: <span id="speedVal">3.5</span> <button class="ui-btn" id="openSpeedKeypadBtn">変更</button><label><input type="checkbox" id="randomSpeedCheck" checked>ランダム</label></div>
+        <div>軌跡: <span id="trailStatus" style="color: #ffaa00;">残存</span> <button class="ui-btn" id="toggleTrailBtn">切替</button></div>
         <div>表示: <button class="ui-btn" id="fullscreenBtn">全画面にする</button></div>
+        <div class="ui-help">ダブルクリックでメニュー表示/非表示切り替え</div>
     </div>
 
     <div class="keypad-modal" id="keypadModal">
@@ -186,14 +193,15 @@
 
         const MIN_RADIUS = 5;
         let MAX_LIMIT = 1000;
-        let MIN_LIMIT = 2;
+        let MIN_LIMIT = 10;
         let BALL_SPEED = 3.5;
-        let isRandomSpeed = false;
-        let trailMode = 'on'; // 'on', 'persist', 'off'
+        let isRandomSpeed = true;
+        let trailMode = 'persist';
         let mode = 'SPLITTING';
         let uiVisible = true;
         let isKeypadOpen = false;
         let inputBuffer = '';
+        let isNewInput = true;
         let activeTarget = 'MAX';
 
         function updateModeDisplay() {
@@ -201,7 +209,7 @@
                 modeText.textContent = '分裂中';
                 modeText.style.color = '#00ffcc';
             } else {
-                modeText.textContent = '吸収合体中';
+                modeText.textContent = '吸収中';
                 modeText.style.color = '#ff3366';
             }
         }
@@ -240,30 +248,15 @@
             }
         });
 
-        function calculateDefaultLimit() {
-            const screenArea = window.innerWidth * window.innerHeight;
-            const targetArea = screenArea * 0.8;
-            const minBallArea = Math.PI * MIN_RADIUS * MIN_RADIUS;
-            let calculated = Math.floor(targetArea / minBallArea * 0.7);
-            return Math.max(10, calculated);
-        }
-
-        let lastWidth = window.innerWidth;
-
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            if (MAX_LIMIT === 0 || window.innerWidth !== lastWidth) {
-                MAX_LIMIT = calculateDefaultLimit();
-                maxLimitValSpan.textContent = MAX_LIMIT;
-            }
-            lastWidth = window.innerWidth;
         }
 
-        MAX_LIMIT = calculateDefaultLimit();
         maxLimitValSpan.textContent = MAX_LIMIT;
         minLimitValSpan.textContent = MIN_LIMIT;
         speedValSpan.textContent = BALL_SPEED;
+        randomSpeedCheck.checked = true;
 
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
@@ -335,6 +328,7 @@
             document.body.classList.remove('hide-cursor');
             clearTimeout(cursorTimer);
             inputBuffer = currentVal.toString();
+            isNewInput = true;
             keypadDisplay.textContent = inputBuffer;
             keypadModal.style.display = 'block';
         }
@@ -342,10 +336,15 @@
         document.querySelectorAll('.keypad-btn[data-val]').forEach(btn => {
             btn.addEventListener('click', () => {
                 let val = btn.getAttribute('data-val');
-                if (inputBuffer === '0') {
+                if (isNewInput) {
                     inputBuffer = val;
+                    isNewInput = false;
                 } else {
-                    inputBuffer += val;
+                    if (inputBuffer === '0') {
+                        inputBuffer = val;
+                    } else {
+                        inputBuffer += val;
+                    }
                 }
                 keypadDisplay.textContent = inputBuffer;
             });
@@ -353,10 +352,12 @@
 
         clearBtn.addEventListener('click', () => {
             inputBuffer = '0';
+            isNewInput = false;
             keypadDisplay.textContent = inputBuffer;
         });
 
         backBtn.addEventListener('click', () => {
+            isNewInput = false;
             if (inputBuffer.length > 1) {
                 inputBuffer = inputBuffer.slice(0, -1);
             } else {
@@ -484,7 +485,6 @@
             }
 
             draw() {
-                // 軌跡の幅をボールの直径（radius * 2）に合わせる
                 if (trailMode !== 'off' && this.history.length > 1) {
                     ctx.save();
                     const total = this.history.length;
@@ -497,7 +497,6 @@
                         ctx.beginPath();
                         ctx.moveTo(p1.x, p1.y);
                         ctx.lineTo(p2.x, p2.y);
-                        // 各時点でのボールの直径（p1とp2の中間値を使用、または現在のradius）に設定
                         ctx.lineWidth = p2.radius * 2;
                         ctx.lineCap = 'round';
                         ctx.lineJoin = 'round';
@@ -508,7 +507,6 @@
                     ctx.restore();
                 }
 
-                // ボール本体を描画
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
                 ctx.fillStyle = this.color;
