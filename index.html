@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ボール分裂・吸収無限ループシミュレーション</title>
+    <title>ボールシミュレーション</title>
     <style>
         body {
             margin: 0;
@@ -19,7 +19,6 @@
             color: #fff;
             user-select: none;
         }
-        /* カーソル非表示用のクラス */
         body.hide-cursor {
             cursor: none;
         }
@@ -57,7 +56,6 @@
             background: #444;
         }
 
-        /* テンキーモーダル */
         .keypad-modal {
             position: absolute;
             top: 50%;
@@ -121,13 +119,12 @@
     <div class="ui-panel" id="uiPanel">
         <div>モード: <span id="modeText" style="color: #00ffcc; font-weight: bold;">分裂中 (SPLITTING)</span></div>
         <div>ボール数: <span id="ballCount">2</span></div>
-        <div>上限数: <span id="maxLimitVal">9999</span> <button class="limit-btn" id="openKeypadBtn">変更</button></div>
+        <div>上限数: <span id="maxLimitVal">0</span> <button class="limit-btn" id="openKeypadBtn">変更</button></div>
     </div>
 
-    <!-- テンキーモーダル -->
     <div class="keypad-modal" id="keypadModal">
-        <div style="margin-bottom: 8px; font-size: 13px; color: #aaa;">上限数を入力 (1〜9999)</div>
-        <div class="keypad-display" id="keypadDisplay">9999</div>
+        <div style="margin-bottom: 8px; font-size: 13px; color: #aaa;">上限数を入力</div>
+        <div class="keypad-display" id="keypadDisplay">0</div>
         <div class="keypad-grid">
             <button class="keypad-btn" data-val="1">1</button>
             <button class="keypad-btn" data-val="2">2</button>
@@ -162,19 +159,45 @@
         const backBtn = document.getElementById('backBtn');
         const okBtn = document.getElementById('okBtn');
 
-        let MAX_LIMIT = 9999;
+        const MIN_RADIUS = 5; // 最小ボールサイズ
+        let MAX_LIMIT = 1000;
         const BALL_SPEED = 3.5;
         let mode = 'SPLITTING';
         let uiVisible = true;
         let isKeypadOpen = false;
-        let inputBuffer = '9999';
+        let inputBuffer = '';
 
-        // マウスカーソル自動非表示タイマーの処理
+        function calculateDefaultLimit() {
+            const screenArea = window.innerWidth * window.innerHeight;
+            const targetArea = screenArea * 0.8;
+            const minBallArea = Math.PI * MIN_RADIUS * MIN_RADIUS;
+            // 充填率の理論値（ヘキサゴナル充填で約0.91）を考慮しつつ、隙間を引いて計算
+            let calculated = Math.floor(targetArea / minBallArea * 0.7);
+            return Math.max(10, calculated);
+        }
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            // 初期化時またはリサイズ時にデフォルト上限数を自動計算（ユーザーが手動変更していない場合など）
+            if (MAX_LIMIT === 0 || window.innerWidth !== lastWidth) {
+                MAX_LIMIT = calculateDefaultLimit();
+                maxLimitValSpan.textContent = MAX_LIMIT;
+            }
+            lastWidth = window.innerWidth;
+        }
+
+        let lastWidth = window.innerWidth;
+        MAX_LIMIT = calculateDefaultLimit();
+        maxLimitValSpan.textContent = MAX_LIMIT;
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
         let cursorTimer = null;
         function resetCursorTimer() {
             document.body.classList.remove('hide-cursor');
             clearTimeout(cursorTimer);
-            // テンキーが開いていない時のみ、3秒後に非表示にする
             if (!isKeypadOpen) {
                 cursorTimer = setTimeout(() => {
                     document.body.classList.add('hide-cursor');
@@ -185,14 +208,6 @@
         window.addEventListener('mousemove', resetCursorTimer);
         window.addEventListener('mousedown', resetCursorTimer);
 
-        function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
-
-        // 画面内ダブルクリックでUIの表示/非表示を切り替え（テンキーが開いていない時のみ）
         window.addEventListener('dblclick', (e) => {
             if (isKeypadOpen) return;
             uiVisible = !uiVisible;
@@ -206,22 +221,20 @@
             }
         });
 
-        // テンキーの開閉制御
         openKeypadBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             isKeypadOpen = true;
-            document.body.classList.remove('hide-cursor'); // テンキーを開いたらカーソルを必ず表示
+            document.body.classList.remove('hide-cursor');
             clearTimeout(cursorTimer);
             inputBuffer = MAX_LIMIT.toString();
             keypadDisplay.textContent = inputBuffer;
             keypadModal.style.display = 'block';
         });
 
-        // テンキーの数字ボタン
         document.querySelectorAll('.keypad-btn[data-val]').forEach(btn => {
             btn.addEventListener('click', () => {
                 let val = btn.getAttribute('data-val');
-                if (inputBuffer === '0' || inputBuffer.length >= 4) {
+                if (inputBuffer === '0') {
                     inputBuffer = val;
                 } else {
                     inputBuffer += val;
@@ -247,7 +260,6 @@
         okBtn.addEventListener('click', () => {
             let num = parseInt(inputBuffer, 10);
             if (isNaN(num) || num < 2) num = 2;
-            if (num > 9999) num = 9999;
             MAX_LIMIT = num;
             maxLimitValSpan.textContent = MAX_LIMIT;
             keypadModal.style.display = 'none';
@@ -395,8 +407,8 @@
                                         ballsToRemove.add(b1);
                                         ballsToRemove.add(b2);
 
-                                        let r1 = Math.max(b1.radius * 0.75, 5);
-                                        let r2 = Math.max(b2.radius * 0.75, 5);
+                                        let r1 = Math.max(b1.radius * 0.75, MIN_RADIUS);
+                                        let r2 = Math.max(b2.radius * 0.75, MIN_RADIUS);
 
                                         ballsToAdd.push(new Ball(b1.x - Math.cos(angle)*r1, b1.y - Math.sin(angle)*r1, b1.vx, b1.vy, r1, getRandomColor(), 20));
                                         ballsToAdd.push(new Ball(b1.x + Math.cos(angle)*r1, b1.y + Math.sin(angle)*r1, -b1.vx, -b1.vy, r1, getRandomColor(), 20));
