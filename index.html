@@ -133,6 +133,7 @@
         <div>上限数: <span id="maxLimitVal">0</span> <button class="ui-btn" id="openMaxKeypadBtn">変更</button></div>
         <div>下限数: <span id="minLimitVal">2</span> <button class="ui-btn" id="openMinKeypadBtn">変更</button></div>
         <div>スピード: <span id="speedVal">3.5</span> <button class="ui-btn" id="openSpeedKeypadBtn">変更</button><label><input type="checkbox" id="randomSpeedCheck">ランダム</label></div>
+        <div>軌跡: <span id="trailStatus" style="color: #00ffcc;">ON</span> <button class="ui-btn" id="toggleTrailBtn">切替</button></div>
         <div>表示: <button class="ui-btn" id="fullscreenBtn">全画面にする</button></div>
     </div>
 
@@ -169,6 +170,8 @@
         const minLimitValSpan = document.getElementById('minLimitVal');
         const speedValSpan = document.getElementById('speedVal');
         const randomSpeedCheck = document.getElementById('randomSpeedCheck');
+        const trailStatus = document.getElementById('trailStatus');
+        const toggleTrailBtn = document.getElementById('toggleTrailBtn');
         const fullscreenBtn = document.getElementById('fullscreenBtn');
         
         const keypadModal = document.getElementById('keypadModal');
@@ -186,6 +189,7 @@
         let MIN_LIMIT = 2;
         let BALL_SPEED = 3.5;
         let isRandomSpeed = false;
+        let trailMode = 'on'; // 'on', 'persist', 'off'
         let mode = 'SPLITTING';
         let uiVisible = true;
         let isKeypadOpen = false;
@@ -213,6 +217,26 @@
             isRandomSpeed = randomSpeedCheck.checked;
             for (let b of balls) {
                 b.assignSpeed();
+            }
+        });
+
+        toggleTrailBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (trailMode === 'on') {
+                trailMode = 'persist';
+                trailStatus.textContent = '残存';
+                trailStatus.style.color = '#ffaa00';
+            } else if (trailMode === 'persist') {
+                trailMode = 'off';
+                trailStatus.textContent = 'OFF';
+                trailStatus.style.color = '#ff3366';
+                for (let b of balls) {
+                    b.history = [];
+                }
+            } else {
+                trailMode = 'on';
+                trailStatus.textContent = 'ON';
+                trailStatus.style.color = '#00ffcc';
             }
         });
 
@@ -391,6 +415,7 @@
                 this.cooldown = cooldown;
                 this.vx = vx;
                 this.vy = vy;
+                this.history = [];
                 this.assignSpeed();
             }
 
@@ -403,10 +428,8 @@
                     currentSpeed = 1;
                 }
                 
-                // ランダムオン時は、ボールごとに独立したスピード（0.8 〜 基準値の1.5倍など、あるいは完全に自由なランダム）を割り当て
                 let targetSpeed;
                 if (isRandomSpeed) {
-                    // ランダム時は0.5からMAX(BALL_SPEED*1.5, 5)の間、または設定されたスピードを上限としたランダム
                     let maxRand = Math.max(BALL_SPEED, 10);
                     targetSpeed = Math.random() * maxRand + 0.8;
                 } else {
@@ -440,12 +463,52 @@
                     }
                 }
 
+                if (trailMode !== 'off') {
+                    const last = this.history[this.history.length - 1];
+                    if (!last || Math.hypot(this.x - last.x, this.y - last.y) > 6) {
+                        this.history.push({ x: this.x, y: this.y, radius: this.radius });
+                        
+                        if (trailMode === 'on' && this.history.length > 30) {
+                            this.history.shift();
+                        } else if (trailMode === 'persist' && this.history.length > 400) {
+                            this.history.shift();
+                        }
+                    }
+                } else {
+                    this.history = [];
+                }
+
                 if (this.cooldown > 0) {
                     this.cooldown--;
                 }
             }
 
             draw() {
+                // 軌跡の幅をボールの直径（radius * 2）に合わせる
+                if (trailMode !== 'off' && this.history.length > 1) {
+                    ctx.save();
+                    const total = this.history.length;
+
+                    for (let i = 1; i < total; i++) {
+                        let p1 = this.history[i - 1];
+                        let p2 = this.history[i];
+                        let ratio = i / total;
+
+                        ctx.beginPath();
+                        ctx.moveTo(p1.x, p1.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        // 各時点でのボールの直径（p1とp2の中間値を使用、または現在のradius）に設定
+                        ctx.lineWidth = p2.radius * 2;
+                        ctx.lineCap = 'round';
+                        ctx.lineJoin = 'round';
+                        ctx.strokeStyle = this.color;
+                        ctx.globalAlpha = ratio * 0.35;
+                        ctx.stroke();
+                    }
+                    ctx.restore();
+                }
+
+                // ボール本体を描画
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
                 ctx.fillStyle = this.color;
@@ -481,7 +544,7 @@
                 }
             }
 
-            const cellSize = 50;
+            const cellSize = 60;
             const grid = new Map();
 
             for (let i = 0; i < balls.length; i++) {
@@ -527,10 +590,9 @@
                                 let velAlongNormal = rvx * nx + rvy * ny;
 
                                 if (velAlongNormal < 0) {
-                                    // 質量（面積に比例）を考慮した完全な弾性衝突（運動量保存則・慣性の法則）
                                     let m1 = b1.radius * b1.radius;
                                     let m2 = b2.radius * b2.radius;
-                                    let e = 1.0; // 反発係数
+                                    let e = 1.0;
                                     let impulseScalar = -(1 + e) * velAlongNormal / (1/m1 + 1/m2);
 
                                     b1.vx -= (impulseScalar / m1) * nx;
@@ -538,7 +600,6 @@
                                     b2.vx += (impulseScalar / m2) * nx;
                                     b2.vy += (impulseScalar / m2) * ny;
 
-                                    // ランダムがオフの場合のみ、一律スピードに再正規化。オンの場合は各ボールの慣性と個別スピードを維持する
                                     if (!isRandomSpeed) {
                                         let curSpeed1 = Math.hypot(b1.vx, b1.vy);
                                         if (curSpeed1 > 0) {
@@ -627,7 +688,6 @@
 
             handleCollisions();
 
-            // シミュレーション内の最大速度を割り出してサブステップ数を動的に変更（高速時のすり抜け防止）
             let maxCurrentSpeed = BALL_SPEED;
             for (let i = 0; i < balls.length; i++) {
                 let spd = Math.hypot(balls[i].vx, balls[i].vy);
